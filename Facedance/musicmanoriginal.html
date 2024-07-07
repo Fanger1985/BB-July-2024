@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>BB1 Radio Mode</title>
+    <style>
+        body, html {
+            height: 100%;
+            margin: 0;
+            background-color: black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .radio-container {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            padding: 20px;
+            border-radius: 50px;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(10px);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 80%;
+            max-width: 600px;
+            z-index: 2;
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.5);
+        }
+
+        button {
+            width: 100px;
+            height: 100px;
+            background: #222;
+            border: none;
+            border-radius: 50%;
+            color: #00ff00;
+            font-size: 16px;
+            cursor: pointer;
+            box-shadow: 0 0 15px rgba(0, 255, 0, 0.6), 0 0 20px rgba(0, 255, 0, 0.4);
+            transition: all 0.3s ease-in-out;
+            position: relative;
+        }
+
+        button:before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 120px;
+            height: 120px;
+            border: 2px solid #00ff00;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 0 10px rgba(0, 255, 0, 0.8), 0 0 20px rgba(0, 255, 0, 0.6);
+            transition: all 0.3s ease-in-out;
+            z-index: -1;
+        }
+
+        button:hover {
+            background: #00ff00;
+            color: #222;
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.8), 0 0 30px rgba(0, 255, 0, 0.6);
+        }
+
+        #stationName {
+            color: #00ff00;
+            font-size: 24px;
+            animation: pulse 2s infinite;
+            text-align: center;
+            font-family: 'Courier New', Courier, monospace;
+            z-index: 1;
+            margin: 0 20px;
+            flex-grow: 1;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                text-shadow: 0 0 10px #00ff00, 0 0 20px #00ff00, 0 0 30px #00ff00, 0 0 40px #00ff00, 0 0 50px #00ff00, 0 0 60px #00ff00, 0 0 70px #00ff00;
+            }
+            50% {
+                text-shadow: 0 0 20px #00ff00, 0 0 30px #00ff00, 0 0 40px #00ff00, 0 0 50px #00ff00, 0 0 60px #00ff00, 0 0 70px #00ff00, 0 0 80px #00ff00;
+            }
+        }
+
+        canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="radio-container">
+        <button id="prevButton">PREV</button>
+        <div id="stationName">BB1 Radio Mode</div>
+        <button id="nextButton">NEXT</button>
+    </div>
+    <canvas id="visualizer"></canvas>
+    <script>
+        let stations = [
+            {"name": "Twente Gold - Fallout", "url": "http://c18.radioboss.fm:8403/autodj"},
+            {"name": "Radio Galaxy - PipRaDI0", "url": "http://c15.radioboss.fm:8078/autodj"},
+            {"name": "JAZZ GROOVE", "url": "http://audio-edge-5bkfj.fra.h.radiomast.io/8a384ff3-6fd1-4e5d-b47d-0cbefeffe8d7"},
+            {"name": "Shaq Fu Radio", "url": "http://ais-edge148-pit01.cdnstream.com/2092_128.mp3"},
+            {"name": "La Rielera de Aguascalientes", "url": "http://ec3.yesstreaming.net:2810/stream"},
+            {"name": "Japan Only Hits", "url": "http://ais-edge91-dal03.cdnstream.com/2629_128.mp3"},
+            {"name": "Crucial Velocity Radio", "url": "http://ais-edge94-nyc04.cdnstream.com/1369_128"},
+            {"name": "LS4 Radio Continental 590", "url": "http://edge05.radiohdvivo.com:9126/live"},
+            {"name": "Radio Tango", "url": "http://ais-edge148-pit01.cdnstream.com/2202_128.mp3"},
+            {"name": "RAI Radio", "url": "http://icestreaming.rai.it/1.mp3"},
+            {"name": "Make 80s great AGAIN", "url": "http://ais-edge147-dal03.cdnstream.com/2281_128.mp3"},
+            {"name": "4 eVeR X-MaS", "url": "http://ais-edge114-dal02.cdnstream.com/1102_128"},
+            {"name": "Klasszik Rádió 92.1", "url": "http://s04.diazol.hu:9600/live.mp3"},
+            {"name": "Radio SuperFLY", "url": "http://stream01.superfly.fm/live"},
+            {"name": "RTHK Radio", "url": "http://stm.rthk.hk:80/radio1"},
+            {"name": "Los 40 - Argentina", "url": "http://edge01.radiohdvivo.com:9006/live"},
+            {"name": "Le Son Parisien", "url": "http://stream.lesonparisien.com/hi"},
+            {"name": "Pure FM - Berlin", "url": "http://s4.radionetz.de/purefm-bln.mp3"},
+            {"name": "Dubai Radio", "url": "http://c20.radioboss.fm:8543/live"},
+            {"name": "Radio DEFCON hacker station", "url": "http://ice6.somafm.com/defcon-128-mp3"},
+            {"name": "KAH Radio Gansta", "url": "http://ec5.yesstreaming.net:2170/stream"},
+            {"name": "Radio Patmos", "url": "http://s3.yesstreaming.net:7011/radio"},
+            {"name": "K-ROCK Radio", "url": "http://ice10.fluidstream.net:8080/ric.mp3"},
+            {"name": "Radio HARANA Manila", "url": "http://ice.streams.ovh:1690/stream"},
+            {"name": "Radio Bremen", "url": "http://icecast.radiobremen.de/rb/bremenvier/live/mp3/64/stream.mp3"}
+        ];
+
+        let currentStation = 0;
+        let audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        let analyser = audioContext.createAnalyser();
+        let audio = new Audio();
+        audio.crossOrigin = "anonymous"; // Ensure cross-origin is set if loading from another domain
+        let source = audioContext.createMediaElementSource(audio);
+        source.connect(analyser);
+        analyser.connect(audioContext.destination);
+        audio.src = stations[currentStation].url;
+
+        // WebSocket connection to the server for controlling GPIO pins
+        let socket = new WebSocket('ws://localhost:8765');
+
+        // Handle play/pause on user interaction
+        document.getElementById('nextButton').addEventListener('click', () => {
+            currentStation = (currentStation + 1) % stations.length;
+            changeStation();
+            if (audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+        });
+
+        document.getElementById('prevButton').addEventListener('click', () => {
+            currentStation = (currentStation - 1 + stations.length) % stations.length;
+            changeStation();
+            if (audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+        });
+
+        function changeStation() {
+            audio.src = stations[currentStation].url;
+            audio.play();
+            document.getElementById('stationName').innerText = stations[currentStation].name;
+        }
+
+        let canvas = document.getElementById('visualizer');
+        let ctx = canvas.getContext('2d');
+
+        function drawVisualizer() {
+            requestAnimationFrame(drawVisualizer);
+            let dataArray = new Uint8Array(analyser.frequencyBinCount);
+            analyser.getByteTimeDomainData(dataArray);
+            let sum = dataArray.reduce((a, b) => a + b, 0);
+            let average = sum / dataArray.length;
+
+            // Update the glow based on the volume
+            let glowIntensity = (average - 128) * 2;  // scale based on average
+            let buttons = document.querySelectorAll('button');
+            buttons.forEach(button => {
+                button.style.boxShadow = `0 0 ${15 + glowIntensity}px rgba(0, 255, 0, 0.6), 0 0 ${20 + glowIntensity}px rgba(0, 255, 0, 0.4)`;
+            });
+
+            // Send volume data to the server to control GPIO pins
+            if (socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({ volume: average }));
+            }
+
+            // Clear the canvas for each frame
+            ctx.fillStyle = 'black';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Create a gradient for the edges
+            let gradient = ctx.createLinearGradient(0, 0, canvas.width, 0);
+            gradient.addColorStop(0, 'rgba(0, 0, 0, 1)');
+            gradient.addColorStop(0.2, 'rgba(0, 0, 0, 0)');
+            gradient.addColorStop(0.8, 'rgba(0, 0, 0, 0)');
+            gradient.addColorStop(1, 'rgba(0, 0, 0, 1)');
+
+            // Draw the waveform
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = '#00ff00';
+            ctx.beginPath();
+            let sliceWidth = canvas.width * 1.0 / dataArray.length;
+            let x = 0;
+            for(let i = 0; i < dataArray.length; i++) {
+                let v = dataArray[i] / 128.0;
+                let y = v * canvas.height / 2;
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+                x += sliceWidth;
+            }
+            ctx.lineTo(canvas.width, canvas.height / 2);
+            ctx.stroke();
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+
+        drawVisualizer(); // Start the visualizer
+        audio.play(); // Start playing
+
+        // Ensure audio starts playing after a user gesture
+        document.body.addEventListener('click', function init() {
+            document.body.removeEventListener('click', init, false);
+            audio.play();
+            if (audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+        }, false);
+    </script>
+</body>
+</html>
