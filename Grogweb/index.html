@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Object Detection and Navigation</title>
+  <script src="tf.min.js"></script>
+  <script src="coco-ssd.js"></script>
+  <style>
+    body {
+      background-color: black;
+      color: red;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 1.5em;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+    }
+    #detected-object {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    #controlGrid {
+      display: grid;
+      grid-template-rows: repeat(3, auto);
+      grid-template-columns: repeat(3, auto);
+      gap: 10px;
+    }
+    .button {
+      font-size: 1em;
+      padding: 15px;
+      border: 2px solid white;
+      border-radius: 5px;
+      cursor: pointer;
+      background-color: white;
+      color: black;
+      transition: transform 0.1s;
+    }
+    .button:active {
+      transform: scale(0.9);
+      color: red;
+    }
+    .hidden {
+      display: none;
+    }
+    @media (max-width: 600px) {
+      body {
+        font-size: 1em;
+      }
+      #controlGrid {
+        grid-template-rows: repeat(3, auto);
+        grid-template-columns: repeat(3, auto);
+      }
+      .button {
+        font-size: 0.8em;
+        padding: 10px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="detected-object">Detected Objects: None</div>
+  <div id="controlGrid">
+    <button class="button" id="enableCam">Enable Webcam</button>
+    <button class="button" onclick="sendCommand('/forward')">Forward</button>
+    <button class="button" onclick="sendCommand('/backward')">Backward</button>
+    <button class="button" onclick="sendCommand('/left')">Left</button>
+    <button class="button" onclick="sendCommand('/right')">Right</button>
+    <button class="button" onclick="stopExploration()">Stop</button>
+    <button class="button" onclick="startExploration()">Explore</button>
+  </div>
+  <video id="webcam" autoplay class="hidden"></video> <!-- Hide the video feed -->
+  <script>
+    var model = undefined;
+    const SAFE_DISTANCE = 150;  // Minimum safe distance in pixels
+    const MAP_SIZE = 100; // Size of the map grid
+    let currentPos = { x: MAP_SIZE / 2, y: MAP_SIZE / 2 }; // Start in the middle of the map
+    let map = JSON.parse(localStorage.getItem('map')) || Array(MAP_SIZE).fill().map(() => Array(MAP_SIZE).fill(0)); // Initialize map
+    let exploring = false;
+
+    cocoSsd.load().then(function(loadedModel) {
+      model = loadedModel;
+      document.getElementById('enableCam').addEventListener('click', enableWebcam);
+    });
+
+    function enableWebcam() {
+      const button = document.getElementById('enableCam');
+      button.style.display = 'none';
+
+      const video = document.getElementById('webcam');
+      const constraints = { video: true };
+
+      navigator.mediaDevices.getUserMedia(constraints).then(function(stream) {
+        video.srcObject = stream;
+        video.addEventListener('loadeddata', predictWebcam);
+      });
+    }
+
+    function predictWebcam() {
+      if (!model) {
+        console.log("Model not loaded yet.");
+        return;
+      }
+
+      const video = document.getElementById('webcam');
+      model.detect(video).then(function(predictions) {
+        const detectedText = predictions.map(pred => pred.class).join(", ");
+        document.getElementById('detected-object').innerText = `Detected Objects: ${detectedText.toUpperCase()}`;
+
+        localStorage.setItem('detectedObjects', JSON.stringify(predictions));
+
+        let humanOrDogDetected = false;
+
+        predictions.forEach(prediction => {
+          if (prediction.class === 'person' || prediction.class === 'dog') {
+            humanOrDogDetected = true;
+            const centerX = (prediction.bbox[0] + prediction.bbox[2] / 2);
+            const distance = prediction.bbox[2]; // Using bounding box width as a proxy for distance
+
+            if (distance < SAFE_DISTANCE) {
+              sendCommand('/stop');
+            } else {
+              if (centerX < video.width / 3) {
+                sendCommand('/left');
+                updateMap('left');
+              } else if (centerX > 2 * video.width / 3) {
+                sendCommand('/right');
+                updateMap('right');
+              } else {
+                sendCommand('/forward');
+                updateMap('forward');
+              }
+            }
+          }
+        });
+
+        if (!humanOrDogDetected) {
+          sendCommand('/stop');
+          setTimeout(() => {
+            if (exploring) explore();
+          }, 3000);  // Wait for 3 seconds before exploring again
+        }
+
+        window.requestAnimationFrame(predictWebcam);
+      });
+    }
+
+    function sendCommand(command) {
+      fetch('/control', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ command: command })
+      })
+      .then(response => {
+        if (response.ok) {
+          console.log(`Command ${command} sent successfully.`);
+        } else {
+          console.error(`Failed to send command ${command}.`);
+        }
+      })
+      .catch(error => {
+        console.error(`Error sending command ${command}:`, error);
+      });
+
+      let commands = JSON.parse(localStorage.getItem('commands')) || [];
+      commands.push(command);
+      localStorage.setItem('commands', JSON.stringify(commands));
+    }
+
+    function updateMap(direction) {
+      if (direction === 'forward') {
+        currentPos.y = Math.max(0, currentPos.y - 1);
+      } else if (direction === 'backward') {
+        currentPos.y = Math.min(MAP_SIZE - 1, currentPos.y + 1);
+      } else if (direction === 'left') {
+        currentPos.x = Math.max(0, currentPos.x - 1);
+      } else if (direction === 'right') {
+        currentPos.x = Math.min(MAP_SIZE - 1, currentPos.x + 1);
+      }
+
+      map[currentPos.y][currentPos.x] = 1; // Mark the current position on the map
+      localStorage.setItem('map', JSON.stringify(map));
+    }
+
+    function startExploration() {
+      exploring = true;
+      explore();
+    }
+
+    function stopExploration() {
+      exploring = false;
+      sendCommand('/stop');
+    }
+
+    function explore() {
+      if (!exploring) return;
+      console.log("Exploring...");
+      
+      const directions = ['/forward', '/backward', '/left', '/right'];
+      const randomDirection = directions[Math.floor(Math.random() * directions.length)];
+      sendCommand(randomDirection);
+      updateMap(randomDirection.replace('/', ''));
+      
+      setTimeout(() => {
+        if (exploring) explore();
+      }, 2000); // Explore in a random direction every 2 seconds
+    }
+
+    function checkCollisions() {
+      // Implement collision detection using the ToF and ultrasonic sensors
+      fetch('/check_collisions', {
+        method: 'GET'
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.collision) {
+          sendCommand('/stop');
+        }
+      })
+      .catch(error => {
+        console.error('Error checking collisions:', error);
+      });
+    }
+
+    setInterval(checkCollisions, 100); // Check for collisions every 100ms
+  </script>
+</body>
+</html>
